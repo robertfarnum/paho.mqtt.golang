@@ -22,9 +22,10 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"golang.org/x/net/proxy"
 	"log"
 	"net/url"
+
+	"golang.org/x/net/proxy"
 
 	// "log"
 	"os"
@@ -34,6 +35,7 @@ import (
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
+	"github.com/eclipse/paho.mqtt.golang/trace"
 )
 
 func onMessageReceived(_ MQTT.Client, message MQTT.Message) {
@@ -51,8 +53,8 @@ func init() {
  * Specify proxy via environment variable: eg: ALL_PROXY=https://proxy_host:port
  */
 func main() {
-	MQTT.DEBUG = log.New(os.Stdout, "", 0)
-	MQTT.ERROR = log.New(os.Stderr, "", 0)
+	trace.DEBUG = log.New(os.Stdout, "", 0)
+	trace.ERROR = log.New(os.Stderr, "", 0)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)

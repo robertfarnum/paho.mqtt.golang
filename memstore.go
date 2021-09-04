@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
+	"github.com/eclipse/paho.mqtt.golang/trace"
 )
 
 // MemoryStore implements the store interface to provide a "persistence"
@@ -49,7 +50,7 @@ func (store *MemoryStore) Open() {
 	store.Lock()
 	defer store.Unlock()
 	store.opened = true
-	DEBUG.Println(STR, "memorystore initialized")
+	trace.DEBUG.Println(trace.STR, "memorystore initialized")
 }
 
 // Put takes a key and a pointer to a Message and stores the
@@ -58,7 +59,7 @@ func (store *MemoryStore) Put(key string, message packets.ControlPacket) {
 	store.Lock()
 	defer store.Unlock()
 	if !store.opened {
-		ERROR.Println(STR, "Trying to use memory store, but not open")
+		trace.ERROR.Println(trace.STR, "Trying to use memory store, but not open")
 		return
 	}
 	store.messages[key] = message
@@ -70,15 +71,15 @@ func (store *MemoryStore) Get(key string) packets.ControlPacket {
 	store.RLock()
 	defer store.RUnlock()
 	if !store.opened {
-		ERROR.Println(STR, "Trying to use memory store, but not open")
+		trace.ERROR.Println(trace.STR, "Trying to use memory store, but not open")
 		return nil
 	}
 	mid := mIDFromKey(key)
 	m := store.messages[key]
 	if m == nil {
-		CRITICAL.Println(STR, "memorystore get: message", mid, "not found")
+		trace.CRITICAL.Println(trace.STR, "memorystore get: message", mid, "not found")
 	} else {
-		DEBUG.Println(STR, "memorystore get: message", mid, "found")
+		trace.DEBUG.Println(trace.STR, "memorystore get: message", mid, "found")
 	}
 	return m
 }
@@ -89,7 +90,7 @@ func (store *MemoryStore) All() []string {
 	store.RLock()
 	defer store.RUnlock()
 	if !store.opened {
-		ERROR.Println(STR, "Trying to use memory store, but not open")
+		trace.ERROR.Println(trace.STR, "Trying to use memory store, but not open")
 		return nil
 	}
 	var keys []string
@@ -105,16 +106,16 @@ func (store *MemoryStore) Del(key string) {
 	store.Lock()
 	defer store.Unlock()
 	if !store.opened {
-		ERROR.Println(STR, "Trying to use memory store, but not open")
+		trace.ERROR.Println(trace.STR, "Trying to use memory store, but not open")
 		return
 	}
 	mid := mIDFromKey(key)
 	m := store.messages[key]
 	if m == nil {
-		WARN.Println(STR, "memorystore del: message", mid, "not found")
+		trace.WARN.Println(trace.STR, "memorystore del: message", mid, "not found")
 	} else {
 		delete(store.messages, key)
-		DEBUG.Println(STR, "memorystore del: message", mid, "was deleted")
+		trace.DEBUG.Println(trace.STR, "memorystore del: message", mid, "was deleted")
 	}
 }
 
@@ -123,11 +124,11 @@ func (store *MemoryStore) Close() {
 	store.Lock()
 	defer store.Unlock()
 	if !store.opened {
-		ERROR.Println(STR, "Trying to close memory store, but not open")
+		trace.ERROR.Println(trace.STR, "Trying to close memory store, but not open")
 		return
 	}
 	store.opened = false
-	DEBUG.Println(STR, "memorystore closed")
+	trace.DEBUG.Println(trace.STR, "memorystore closed")
 }
 
 // Reset eliminates all persisted message data in the store.
@@ -135,8 +136,8 @@ func (store *MemoryStore) Reset() {
 	store.Lock()
 	defer store.Unlock()
 	if !store.opened {
-		ERROR.Println(STR, "Trying to reset memory store, but not open")
+		trace.ERROR.Println(trace.STR, "Trying to reset memory store, but not open")
 	}
 	store.messages = make(map[string]packets.ControlPacket)
-	WARN.Println(STR, "memorystore wiped")
+	trace.WARN.Println(trace.STR, "memorystore wiped")
 }

@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
+	"github.com/eclipse/paho.mqtt.golang/trace"
 )
 
 func Test_Start(t *testing.T) {
@@ -1428,7 +1429,7 @@ func Test_ResumeSubsWithReconnect(t *testing.T) {
 		sub.MessageID = c.(*client).getID(subToken)
 		subToken.messageID = sub.MessageID
 	}
-	DEBUG.Println(CLI, sub.String())
+	trace.DEBUG.Println(trace.CLI, sub.String())
 
 	persistOutbound(c.(*client).persist, sub)
 	// subToken := c.Subscribe(topic, qos, nil)

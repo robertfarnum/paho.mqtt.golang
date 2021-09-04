@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
+	"github.com/eclipse/paho.mqtt.golang/trace"
 )
 
 const closedNetConnErrorText = "use of closed network connection" // error string for closed conn (https://golang.org/src/net/error_test.go)
@@ -47,25 +48,25 @@ func ConnectMQTT(conn net.Conn, cm *packets.ConnectPacket, protocolVersion uint)
 func connectMQTT(conn io.ReadWriter, cm *packets.ConnectPacket, protocolVersion uint) (byte, bool, error) {
 	switch protocolVersion {
 	case 3:
-		DEBUG.Println(CLI, "Using MQTT 3.1 protocol")
+		trace.DEBUG.Println(trace.CLI, "Using MQTT 3.1 protocol")
 		cm.ProtocolName = "MQIsdp"
 		cm.ProtocolVersion = 3
 	case 0x83:
-		DEBUG.Println(CLI, "Using MQTT 3.1b protocol")
+		trace.DEBUG.Println(trace.CLI, "Using MQTT 3.1b protocol")
 		cm.ProtocolName = "MQIsdp"
 		cm.ProtocolVersion = 0x83
 	case 0x84:
-		DEBUG.Println(CLI, "Using MQTT 3.1.1b protocol")
+		trace.DEBUG.Println(trace.CLI, "Using MQTT 3.1.1b protocol")
 		cm.ProtocolName = "MQTT"
 		cm.ProtocolVersion = 0x84
 	default:
-		DEBUG.Println(CLI, "Using MQTT 3.1.1 protocol")
+		trace.DEBUG.Println(trace.CLI, "Using MQTT 3.1.1 protocol")
 		cm.ProtocolName = "MQTT"
 		cm.ProtocolVersion = 4
 	}
 
 	if err := cm.Write(conn); err != nil {
-		ERROR.Println(CLI, err)
+		trace.ERROR.Println(trace.CLI, err)
 		return packets.ErrNetworkError, false, err
 	}
 
@@ -78,26 +79,26 @@ func connectMQTT(conn io.ReadWriter, cm *packets.ConnectPacket, protocolVersion 
 // This prevents receiving incoming data while resume
 // is in progress if clean session is false.
 func verifyCONNACK(conn io.Reader) (byte, bool, error) {
-	DEBUG.Println(NET, "connect started")
+	trace.DEBUG.Println(trace.NET, "connect started")
 
 	ca, err := packets.ReadPacket(conn)
 	if err != nil {
-		ERROR.Println(NET, "connect got error", err)
+		trace.ERROR.Println(trace.NET, "connect got error", err)
 		return packets.ErrNetworkError, false, err
 	}
 
 	if ca == nil {
-		ERROR.Println(NET, "received nil packet")
+		trace.ERROR.Println(trace.NET, "received nil packet")
 		return packets.ErrNetworkError, false, errors.New("nil CONNACK packet")
 	}
 
 	msg, ok := ca.(*packets.ConnackPacket)
 	if !ok {
-		ERROR.Println(NET, "received msg that was not CONNACK")
+		trace.ERROR.Println(trace.NET, "received msg that was not CONNACK")
 		return packets.ErrNetworkError, false, errors.New("non-CONNACK first packet received")
 	}
 
-	DEBUG.Println(NET, "received connack")
+	trace.DEBUG.Println(trace.NET, "received connack")
 	return msg.ReturnCode, msg.SessionPresent, nil
 }
 
@@ -117,7 +118,7 @@ func startIncoming(conn io.Reader) <-chan inbound {
 	var cp packets.ControlPacket
 	ibound := make(chan inbound)
 
-	DEBUG.Println(NET, "incoming started")
+	trace.DEBUG.Println(trace.NET, "incoming started")
 
 	go func() {
 		for {
@@ -129,10 +130,10 @@ func startIncoming(conn io.Reader) <-chan inbound {
 					ibound <- inbound{err: err}
 				}
 				close(ibound)
-				DEBUG.Println(NET, "incoming complete")
+				trace.DEBUG.Println(trace.NET, "incoming complete")
 				return
 			}
-			DEBUG.Println(NET, "startIncoming Received Message")
+			trace.DEBUG.Println(trace.NET, "startIncoming Received Message")
 			ibound <- inbound{cp: cp}
 		}
 	}()
@@ -160,33 +161,33 @@ func startIncomingComms(conn io.Reader,
 	ibound := startIncoming(conn) // Start goroutine that reads from network connection
 	output := make(chan incomingComms)
 
-	DEBUG.Println(NET, "startIncomingComms started")
+	trace.DEBUG.Println(trace.NET, "startIncomingComms started")
 	go func() {
 		for {
 			if inboundFromStore == nil && ibound == nil {
 				close(output)
-				DEBUG.Println(NET, "startIncomingComms goroutine complete")
+				trace.DEBUG.Println(trace.NET, "startIncomingComms goroutine complete")
 				return // As soon as ibound is closed we can exit (should have already processed an error)
 			}
-			DEBUG.Println(NET, "logic waiting for msg on ibound")
+			trace.DEBUG.Println(trace.NET, "logic waiting for msg on ibound")
 
 			var msg packets.ControlPacket
 			var ok bool
 			select {
 			case msg, ok = <-inboundFromStore:
 				if !ok {
-					DEBUG.Println(NET, "startIncomingComms: inboundFromStore complete")
+					trace.DEBUG.Println(trace.NET, "startIncomingComms: inboundFromStore complete")
 					inboundFromStore = nil // should happen quickly as this is only for persisted messages
 					continue
 				}
-				DEBUG.Println(NET, "startIncomingComms: got msg from store")
+				trace.DEBUG.Println(trace.NET, "startIncomingComms: got msg from store")
 			case ibMsg, ok := <-ibound:
 				if !ok {
-					DEBUG.Println(NET, "startIncomingComms: ibound complete")
+					trace.DEBUG.Println(trace.NET, "startIncomingComms: ibound complete")
 					ibound = nil
 					continue
 				}
-				DEBUG.Println(NET, "startIncomingComms: got msg on ibound")
+				trace.DEBUG.Println(trace.NET, "startIncomingComms: got msg on ibound")
 				// If the inbound comms routine encounters any issues it will send us an error.
 				if ibMsg.err != nil {
 					output <- incomingComms{err: ibMsg.err}
@@ -200,14 +201,14 @@ func startIncomingComms(conn io.Reader,
 
 			switch m := msg.(type) {
 			case *packets.PingrespPacket:
-				DEBUG.Println(NET, "startIncomingComms: received pingresp")
+				trace.DEBUG.Println(trace.NET, "startIncomingComms: received pingresp")
 				c.pingRespReceived()
 			case *packets.SubackPacket:
-				DEBUG.Println(NET, "startIncomingComms: received suback, id:", m.MessageID)
+				trace.DEBUG.Println(trace.NET, "startIncomingComms: received suback, id:", m.MessageID)
 				token := c.getToken(m.MessageID)
 
 				if t, ok := token.(*SubscribeToken); ok {
-					DEBUG.Println(NET, "startIncomingComms: granted qoss", m.ReturnCodes)
+					trace.DEBUG.Println(trace.NET, "startIncomingComms: granted qoss", m.ReturnCodes)
 					for i, qos := range m.ReturnCodes {
 						t.subResult[t.subs[i]] = qos
 					}
@@ -216,29 +217,29 @@ func startIncomingComms(conn io.Reader,
 				token.flowComplete()
 				c.freeID(m.MessageID)
 			case *packets.UnsubackPacket:
-				DEBUG.Println(NET, "startIncomingComms: received unsuback, id:", m.MessageID)
+				trace.DEBUG.Println(trace.NET, "startIncomingComms: received unsuback, id:", m.MessageID)
 				c.getToken(m.MessageID).flowComplete()
 				c.freeID(m.MessageID)
 			case *packets.PublishPacket:
-				DEBUG.Println(NET, "startIncomingComms: received publish, msgId:", m.MessageID)
+				trace.DEBUG.Println(trace.NET, "startIncomingComms: received publish, msgId:", m.MessageID)
 				output <- incomingComms{incomingPub: m}
 			case *packets.PubackPacket:
-				DEBUG.Println(NET, "startIncomingComms: received puback, id:", m.MessageID)
+				trace.DEBUG.Println(trace.NET, "startIncomingComms: received puback, id:", m.MessageID)
 				c.getToken(m.MessageID).flowComplete()
 				c.freeID(m.MessageID)
 			case *packets.PubrecPacket:
-				DEBUG.Println(NET, "startIncomingComms: received pubrec, id:", m.MessageID)
+				trace.DEBUG.Println(trace.NET, "startIncomingComms: received pubrec, id:", m.MessageID)
 				prel := packets.NewControlPacket(packets.Pubrel).(*packets.PubrelPacket)
 				prel.MessageID = m.MessageID
 				output <- incomingComms{outbound: &PacketAndToken{p: prel, t: nil}}
 			case *packets.PubrelPacket:
-				DEBUG.Println(NET, "startIncomingComms: received pubrel, id:", m.MessageID)
+				trace.DEBUG.Println(trace.NET, "startIncomingComms: received pubrel, id:", m.MessageID)
 				pc := packets.NewControlPacket(packets.Pubcomp).(*packets.PubcompPacket)
 				pc.MessageID = m.MessageID
 				c.persistOutbound(pc)
 				output <- incomingComms{outbound: &PacketAndToken{p: pc, t: nil}}
 			case *packets.PubcompPacket:
-				DEBUG.Println(NET, "startIncomingComms: received pubcomp, id:", m.MessageID)
+				trace.DEBUG.Println(trace.NET, "startIncomingComms: received pubcomp, id:", m.MessageID)
 				c.getToken(m.MessageID).flowComplete()
 				c.freeID(m.MessageID)
 			}
@@ -259,17 +260,17 @@ func startOutgoingComms(conn net.Conn,
 	oboundFromIncoming <-chan *PacketAndToken,
 ) <-chan error {
 	errChan := make(chan error)
-	DEBUG.Println(NET, "outgoing started")
+	trace.DEBUG.Println(trace.NET, "outgoing started")
 
 	go func() {
 		for {
-			DEBUG.Println(NET, "outgoing waiting for an outbound message")
+			trace.DEBUG.Println(trace.NET, "outgoing waiting for an outbound message")
 
 			// This goroutine will only exits when all of the input channels we receive on have been closed. This approach is taken to avoid any
 			// deadlocks (if the connection goes down there are limited options as to what we can do with anything waiting on us and
 			// throwing away the packets seems the best option)
 			if oboundp == nil && obound == nil && oboundFromIncoming == nil {
-				DEBUG.Println(NET, "outgoing comms stopping")
+				trace.DEBUG.Println(trace.NET, "outgoing comms stopping")
 				close(errChan)
 				return
 			}
@@ -281,17 +282,17 @@ func startOutgoingComms(conn net.Conn,
 					continue
 				}
 				msg := pub.p.(*packets.PublishPacket)
-				DEBUG.Println(NET, "obound msg to write", msg.MessageID)
+				trace.DEBUG.Println(trace.NET, "obound msg to write", msg.MessageID)
 
 				writeTimeout := c.getWriteTimeOut()
 				if writeTimeout > 0 {
 					if err := conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
-						ERROR.Println(NET, "SetWriteDeadline ", err)
+						trace.ERROR.Println(trace.NET, "SetWriteDeadline ", err)
 					}
 				}
 
 				if err := msg.Write(conn); err != nil {
-					ERROR.Println(NET, "outgoing obound reporting error ", err)
+					trace.ERROR.Println(trace.NET, "outgoing obound reporting error ", err)
 					pub.t.setError(err)
 					// report error if it's not due to the connection being closed elsewhere
 					if !strings.Contains(err.Error(), closedNetConnErrorText) {
@@ -304,22 +305,22 @@ func startOutgoingComms(conn net.Conn,
 					// If we successfully wrote, we don't want the timeout to happen during an idle period
 					// so we reset it to infinite.
 					if err := conn.SetWriteDeadline(time.Time{}); err != nil {
-						ERROR.Println(NET, "SetWriteDeadline to 0 ", err)
+						trace.ERROR.Println(trace.NET, "SetWriteDeadline to 0 ", err)
 					}
 				}
 
 				if msg.Qos == 0 {
 					pub.t.flowComplete()
 				}
-				DEBUG.Println(NET, "obound wrote msg, id:", msg.MessageID)
+				trace.DEBUG.Println(trace.NET, "obound wrote msg, id:", msg.MessageID)
 			case msg, ok := <-oboundp:
 				if !ok {
 					oboundp = nil
 					continue
 				}
-				DEBUG.Println(NET, "obound priority msg to write, type", reflect.TypeOf(msg.p))
+				trace.DEBUG.Println(trace.NET, "obound priority msg to write, type", reflect.TypeOf(msg.p))
 				if err := msg.p.Write(conn); err != nil {
-					ERROR.Println(NET, "outgoing oboundp reporting error ", err)
+					trace.ERROR.Println(trace.NET, "outgoing oboundp reporting error ", err)
 					if msg.t != nil {
 						msg.t.setError(err)
 					}
@@ -329,7 +330,7 @@ func startOutgoingComms(conn net.Conn,
 
 				if _, ok := msg.p.(*packets.DisconnectPacket); ok {
 					msg.t.(*DisconnectToken).flowComplete()
-					DEBUG.Println(NET, "outbound wrote disconnect, closing connection")
+					trace.DEBUG.Println(trace.NET, "outbound wrote disconnect, closing connection")
 					// As per the MQTT spec "After sending a DISCONNECT Packet the Client MUST close the Network Connection"
 					// Closing the connection will cause the goroutines to end in sequence (starting with incoming comms)
 					conn.Close()
@@ -339,9 +340,9 @@ func startOutgoingComms(conn net.Conn,
 					oboundFromIncoming = nil
 					continue
 				}
-				DEBUG.Println(NET, "obound from incoming msg to write, type", reflect.TypeOf(msg.p), " ID ", msg.p.Details().MessageID)
+				trace.DEBUG.Println(trace.NET, "obound from incoming msg to write, type", reflect.TypeOf(msg.p), " ID ", msg.p.Details().MessageID)
 				if err := msg.p.Write(conn); err != nil {
-					ERROR.Println(NET, "outgoing oboundFromIncoming reporting error", err)
+					trace.ERROR.Println(trace.NET, "outgoing oboundFromIncoming reporting error", err)
 					if msg.t != nil {
 						msg.t.setError(err)
 					}
@@ -391,7 +392,7 @@ func startComms(conn net.Conn, // Network connection (must be active)
 
 	// Start the outgoing handler. It is important to note that output from startIncomingComms is fed into startOutgoingComms (for ACK's)
 	oboundErr := startOutgoingComms(conn, c, oboundp, obound, outboundFromIncoming)
-	DEBUG.Println(NET, "startComms started")
+	trace.DEBUG.Println(trace.NET, "startComms started")
 
 	// Run up go routines to handle the output from the above comms functions - these are handled in separate
 	// go routines because they can interact (e.g. ibound triggers an ACK to obound which triggers an error)
@@ -416,7 +417,7 @@ func startComms(conn net.Conn, // Network connection (must be active)
 				outPublish <- ic.incomingPub
 				continue
 			}
-			ERROR.Println(STR, "startComms received empty incomingComms msg")
+			trace.ERROR.Println(trace.STR, "startComms received empty incomingComms msg")
 		}
 		// Close channels that will not be written to again (allowing other routines to exit)
 		close(outboundFromIncoming)
@@ -436,7 +437,7 @@ func startComms(conn net.Conn, // Network connection (must be active)
 	go func() {
 		wg.Wait()
 		close(outError)
-		DEBUG.Println(NET, "startComms closing outError")
+		trace.DEBUG.Println(trace.NET, "startComms closing outError")
 	}()
 
 	return outPublish, outError
@@ -452,16 +453,16 @@ func ackFunc(oboundP chan *PacketAndToken, persist Store, packet *packets.Publis
 		case 2:
 			pr := packets.NewControlPacket(packets.Pubrec).(*packets.PubrecPacket)
 			pr.MessageID = packet.MessageID
-			DEBUG.Println(NET, "putting pubrec msg on obound")
+			trace.DEBUG.Println(trace.NET, "putting pubrec msg on obound")
 			oboundP <- &PacketAndToken{p: pr, t: nil}
-			DEBUG.Println(NET, "done putting pubrec msg on obound")
+			trace.DEBUG.Println(trace.NET, "done putting pubrec msg on obound")
 		case 1:
 			pa := packets.NewControlPacket(packets.Puback).(*packets.PubackPacket)
 			pa.MessageID = packet.MessageID
-			DEBUG.Println(NET, "putting puback msg on obound")
+			trace.DEBUG.Println(trace.NET, "putting puback msg on obound")
 			persistOutbound(persist, pa)
 			oboundP <- &PacketAndToken{p: pa, t: nil}
-			DEBUG.Println(NET, "done putting puback msg on obound")
+			trace.DEBUG.Println(trace.NET, "done putting puback msg on obound")
 		case 0:
 			// do nothing, since there is no need to send an ack packet back
 		}
