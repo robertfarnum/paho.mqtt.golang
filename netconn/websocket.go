@@ -68,7 +68,7 @@ func NewWebsocket(host string, tlsc *tls.Config, timeout time.Duration, requestH
 		return nil, err
 	}
 
-	wrapper := &websocketConnector{
+	wrapper := &WebsocketConnector{
 		Conn: ws,
 	}
 	return wrapper, err
@@ -77,7 +77,7 @@ func NewWebsocket(host string, tlsc *tls.Config, timeout time.Duration, requestH
 // websocketConnector is a websocket wrapper so it satisfies the net.Conn interface so it is a
 // drop in replacement of the golang.org/x/net/websocket package.
 // Implementation guide taken from https://github.com/gorilla/websocket/issues/282
-type websocketConnector struct {
+type WebsocketConnector struct {
 	*websocket.Conn
 	r   io.Reader
 	rio sync.Mutex
@@ -85,7 +85,7 @@ type websocketConnector struct {
 }
 
 // SetDeadline sets both the read and write deadlines
-func (c *websocketConnector) SetDeadline(t time.Time) error {
+func (c *WebsocketConnector) SetDeadline(t time.Time) error {
 	if err := c.SetReadDeadline(t); err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func (c *websocketConnector) SetDeadline(t time.Time) error {
 }
 
 // Write writes data to the websocket
-func (c *websocketConnector) Write(p []byte) (int, error) {
+func (c *WebsocketConnector) Write(p []byte) (int, error) {
 	c.wio.Lock()
 	defer c.wio.Unlock()
 
@@ -106,7 +106,7 @@ func (c *websocketConnector) Write(p []byte) (int, error) {
 }
 
 // Read reads the current websocket frame
-func (c *websocketConnector) Read(p []byte) (int, error) {
+func (c *WebsocketConnector) Read(p []byte) (int, error) {
 	c.rio.Lock()
 	defer c.rio.Unlock()
 	for {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -12,10 +13,10 @@ import (
 
 	"github.com/eclipse/paho.mqtt.golang/netconn"
 	"github.com/eclipse/paho.mqtt.golang/packets"
+	"github.com/gorilla/websocket"
 )
 
-func StartServer(listent string, server string, isDebug bool, isTrace bool) {
-	debug = isDebug
+func StartTCPServer(listen string, server string, isDebug bool, isTrace bool) {
 	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		panic(err)
@@ -31,16 +32,37 @@ func StartServer(listent string, server string, isDebug bool, isTrace bool) {
 	}
 }
 
-func eofOrPanic(err error) bool {
-	if err == nil {
-		return false
-	}
+func StartWebsocketServer(wsListen string, server string, isDebug bool, isTrace bool) {
+	http.HandleFunc("/mqtt", func(w http.ResponseWriter, r *http.Request) {
+		upgrader := websocket.Upgrader{
+			Subprotocols: []string{
+				"mqtt",
+			},
+		}
 
-	if err == io.EOF {
-		return true
-	}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Println("upgrade:", err)
+			return
+		}
 
-	panic(err)
+		defer conn.Close()
+
+		connector := &netconn.WebsocketConnector{
+			Conn: conn,
+		}
+		go serve(connector, server, isTrace)
+	})
+
+	log.Fatal(http.ListenAndServe(wsListen, nil))
+}
+
+func StartServer(tcpListen string, wssListen string, mqttServer string, isDebug bool, isTrace bool) {
+	debug = isDebug
+
+	go StartTCPServer(tcpListen, mqttServer, isDebug, isTrace)
+
+	StartWebsocketServer(wssListen, mqttServer, isDebug, isTrace)
 }
 
 func proxyStream(reader io.Reader, writer io.Writer, dumper func(*bytes.Buffer), rec Recorder) {
@@ -67,7 +89,8 @@ func proxyStream(reader io.Reader, writer io.Writer, dumper func(*bytes.Buffer),
 			break
 		}
 
-		dumper(buff)
+		d := bytes.NewBuffer(buff.Bytes())
+		dumper(d)
 
 		// record the PDU
 		if rec != nil {
@@ -84,12 +107,10 @@ func proxyStream(reader io.Reader, writer io.Writer, dumper func(*bytes.Buffer),
 			fmt.Printf("Wrote %d bytes\n", count)
 		}
 	}
-
-	fmt.Println("EoF")
 }
 
 // serve a connected MQTT client
-func serve(conn net.Conn, server string, trace bool) {
+func serve(conn net.Conn, server string, trace bool) error {
 
 	if debug {
 		fmt.Printf("new connection: %v\n", conn.RemoteAddr())
@@ -102,19 +123,20 @@ func serve(conn net.Conn, server string, trace bool) {
 		name := strings.Replace(conn.RemoteAddr().String(), ":", "-", -1)
 		rec, err = NewFileRecorder(name + ".trace")
 		if err != nil {
-			panic(err)
+			fmt.Print(err.Error())
+			return err
 		}
 	}
 
 	// first open a connection to the remote broker
 	uri, err := url.Parse(server)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	rConn, err := netconn.OpenConnection(uri, nil, time.Duration(time.Second*10), http.Header{}, nil)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer rConn.Close()
 
@@ -139,10 +161,14 @@ func serve(conn net.Conn, server string, trace bool) {
 	err = conn.Close()
 	if err != nil {
 		fmt.Println(err.Error())
+		return err
 	}
 
 	err = rConn.Close()
 	if err != nil {
 		fmt.Println(err.Error())
+		return err
 	}
+
+	return nil
 }

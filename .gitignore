@@ -34,3 +34,5 @@ samples/simple
 samples/stdinpub
 samples/stdoutsub
 samples/routing
+
+**/__debug_bin
