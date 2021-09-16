@@ -27,9 +27,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/eclipse/paho.mqtt.golang/netconn"
-	"github.com/eclipse/paho.mqtt.golang/trace"
 )
 
 // CredentialsProvider allows the username and password to be updated
@@ -94,7 +91,7 @@ type ClientOptions struct {
 	MessageChannelDepth     uint
 	ResumeSubs              bool
 	HTTPHeaders             http.Header
-	WebsocketOptions        *netconn.WebsocketOptions
+	WebsocketOptions        *WebsocketOptions
 	MaxResumePubInFlight    int // // 0 = no limit; otherwise this is the maximum simultaneous messages sent while resuming
 }
 
@@ -136,7 +133,7 @@ func NewClientOptions() *ClientOptions {
 		WriteTimeout:            0, // 0 represents timeout disabled
 		ResumeSubs:              false,
 		HTTPHeaders:             make(map[string][]string),
-		WebsocketOptions:        &netconn.WebsocketOptions{},
+		WebsocketOptions:        &WebsocketOptions{},
 	}
 	return o
 }
@@ -158,7 +155,7 @@ func (o *ClientOptions) AddBroker(server string) *ClientOptions {
 	}
 	brokerURI, err := url.Parse(server)
 	if err != nil {
-		trace.ERROR.Println(trace.CLI, "Failed to parse %q broker address: %s", server, err)
+		ERROR.Println(CLI, "Failed to parse %q broker address: %s", server, err)
 		return o
 	}
 	o.Servers = append(o.Servers, brokerURI)
@@ -405,7 +402,7 @@ func (o *ClientOptions) SetHTTPHeaders(h http.Header) *ClientOptions {
 }
 
 // SetWebsocketOptions sets the additional websocket options used in a WebSocket connection
-func (o *ClientOptions) SetWebsocketOptions(w *netconn.WebsocketOptions) *ClientOptions {
+func (o *ClientOptions) SetWebsocketOptions(w *WebsocketOptions) *ClientOptions {
 	o.WebsocketOptions = w
 	return o
 }

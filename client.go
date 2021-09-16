@@ -35,9 +35,7 @@ import (
 
 	"golang.org/x/sync/semaphore"
 
-	"github.com/eclipse/paho.mqtt.golang/netconn"
 	"github.com/eclipse/paho.mqtt.golang/packets"
-	"github.com/eclipse/paho.mqtt.golang/trace"
 )
 
 const (
@@ -253,13 +251,13 @@ var ErrNotConnected = errors.New("not Connected")
 // because queued messages may be delivered immediately post connection
 func (c *client) Connect() Token {
 	t := newToken(packets.Connect).(*ConnectToken)
-	trace.DEBUG.Println(trace.CLI, "Connect()")
+	DEBUG.Println(CLI, "Connect()")
 
 	if c.options.ConnectRetry && atomic.LoadUint32(&c.status) != disconnected {
 		// if in any state other than disconnected and ConnectRetry is
 		// enabled then the connection will come up automatically
 		// client can assume connection is up
-		trace.WARN.Println(trace.CLI, "Connect() called but not disconnected")
+		WARN.Println(CLI, "Connect() called but not disconnected")
 		t.returnCode = packets.Accepted
 		t.flowComplete()
 		return t
@@ -284,14 +282,14 @@ func (c *client) Connect() Token {
 		conn, rc, t.sessionPresent, err = c.attemptConnection()
 		if err != nil {
 			if c.options.ConnectRetry {
-				trace.DEBUG.Println(trace.CLI, "Connect failed, sleeping for", int(c.options.ConnectRetryInterval.Seconds()), "seconds and will then retry")
+				DEBUG.Println(CLI, "Connect failed, sleeping for", int(c.options.ConnectRetryInterval.Seconds()), "seconds and will then retry")
 				time.Sleep(c.options.ConnectRetryInterval)
 
 				if atomic.LoadUint32(&c.status) == connecting {
 					goto RETRYCONN
 				}
 			}
-			trace.ERROR.Println(trace.CLI, "Failed to connect to a broker")
+			ERROR.Println(CLI, "Failed to connect to a broker")
 			c.setConnected(disconnected)
 			c.persist.Close()
 			t.returnCode = rc
@@ -307,19 +305,19 @@ func (c *client) Connect() Token {
 				c.persist.Reset()
 			}
 		} else {
-			trace.WARN.Println(trace.CLI, "Connect() called but connection established in another goroutine")
+			WARN.Println(CLI, "Connect() called but connection established in another goroutine")
 		}
 
 		close(inboundFromStore)
 		t.flowComplete()
-		trace.DEBUG.Println(trace.CLI, "exit startClient")
+		DEBUG.Println(CLI, "exit startClient")
 	}()
 	return t
 }
 
 // internal function used to reconnect the client when it loses its connection
 func (c *client) reconnect() {
-	trace.DEBUG.Println(trace.CLI, "enter reconnect")
+	DEBUG.Println(CLI, "enter reconnect")
 	var (
 		sleep = 1 * time.Second
 		conn  net.Conn
@@ -334,7 +332,7 @@ func (c *client) reconnect() {
 		if err == nil {
 			break
 		}
-		trace.DEBUG.Println(trace.CLI, "Reconnect failed, sleeping for", int(sleep.Seconds()), "seconds:", err)
+		DEBUG.Println(CLI, "Reconnect failed, sleeping for", int(sleep.Seconds()), "seconds:", err)
 		time.Sleep(sleep)
 		if sleep < c.options.MaxReconnectInterval {
 			sleep *= 2
@@ -354,7 +352,7 @@ func (c *client) reconnect() {
 		if conn != nil {
 			conn.Close()
 		}
-		trace.DEBUG.Println(trace.CLI, "Client moved to disconnected state while reconnecting, abandoning reconnect")
+		DEBUG.Println(CLI, "Client moved to disconnected state while reconnecting, abandoning reconnect")
 		return
 	}
 
@@ -387,22 +385,22 @@ func (c *client) attemptConnection() (net.Conn, byte, bool, error) {
 	c.optionsMu.Unlock()
 	for _, broker := range brokers {
 		cm := newConnectMsgFromOptions(&c.options, broker)
-		trace.DEBUG.Println(trace.CLI, "about to write new connect msg")
+		DEBUG.Println(CLI, "about to write new connect msg")
 	CONN:
 		tlsCfg := c.options.TLSConfig
 		if c.options.OnConnectAttempt != nil {
-			trace.DEBUG.Println(trace.CLI, "using custom onConnectAttempt handler...")
+			DEBUG.Println(CLI, "using custom onConnectAttempt handler...")
 			tlsCfg = c.options.OnConnectAttempt(broker, c.options.TLSConfig)
 		}
 		// Start by opening the network connection (tcp, tls, ws) etc
-		conn, err = netconn.OpenConnection(broker, tlsCfg, c.options.ConnectTimeout, c.options.HTTPHeaders, c.options.WebsocketOptions)
+		conn, err = OpenConnection(broker, tlsCfg, c.options.ConnectTimeout, c.options.HTTPHeaders, c.options.WebsocketOptions)
 		if err != nil {
-			trace.ERROR.Println(trace.CLI, err.Error())
-			trace.WARN.Println(trace.CLI, "failed to connect to broker, trying next")
+			ERROR.Println(CLI, err.Error())
+			WARN.Println(CLI, "failed to connect to broker, trying next")
 			rc = packets.ErrNetworkError
 			continue
 		}
-		trace.DEBUG.Println(trace.CLI, "socket connected to broker")
+		DEBUG.Println(CLI, "socket connected to broker")
 
 		// Now we send the perform the MQTT connection handshake
 		rc, sessionPresent, err = connectMQTT(conn, cm, protocolVersion)
@@ -415,12 +413,12 @@ func (c *client) attemptConnection() (net.Conn, byte, bool, error) {
 			_ = conn.Close()
 		}
 		if !c.options.protocolVersionExplicit && protocolVersion == 4 { // try falling back to 3.1?
-			trace.DEBUG.Println(trace.CLI, "Trying reconnect using MQTT 3.1 protocol")
+			DEBUG.Println(CLI, "Trying reconnect using MQTT 3.1 protocol")
 			protocolVersion = 3
 			goto CONN
 		}
 		if c.options.protocolVersionExplicit { // to maintain logging from previous version
-			trace.ERROR.Println(trace.CLI, "Connecting to", broker, "CONNACK was not CONN_ACCEPTED, but rather", packets.ConnackReturnCodes[rc])
+			ERROR.Println(CLI, "Connecting to", broker, "CONNACK was not CONN_ACCEPTED, but rather", packets.ConnackReturnCodes[rc])
 		}
 	}
 	// If the connection was successful we set member variable and lock in the protocol version for future connection attempts (and users)
@@ -444,7 +442,7 @@ func (c *client) attemptConnection() (net.Conn, byte, bool, error) {
 func (c *client) Disconnect(quiesce uint) {
 	status := atomic.LoadUint32(&c.status)
 	if status == connected {
-		trace.DEBUG.Println(trace.CLI, "disconnecting")
+		DEBUG.Println(CLI, "disconnecting")
 		c.setConnected(disconnected)
 
 		dm := packets.NewControlPacket(packets.Disconnect).(*packets.DisconnectPacket)
@@ -454,19 +452,19 @@ func (c *client) Disconnect(quiesce uint) {
 		case c.oboundP <- &PacketAndToken{p: dm, t: dt}:
 			disconnectSent = true
 		case <-c.commsStopped:
-			trace.WARN.Println("Disconnect packet could not be sent because comms stopped")
+			WARN.Println("Disconnect packet could not be sent because comms stopped")
 		case <-time.After(time.Duration(quiesce) * time.Millisecond):
-			trace.WARN.Println("Disconnect packet not sent due to timeout")
+			WARN.Println("Disconnect packet not sent due to timeout")
 		}
 
 		// wait for work to finish, or quiesce time consumed
 		if disconnectSent {
-			trace.DEBUG.Println(trace.CLI, "calling WaitTimeout")
+			DEBUG.Println(CLI, "calling WaitTimeout")
 			dt.WaitTimeout(time.Duration(quiesce) * time.Millisecond)
-			trace.DEBUG.Println(trace.CLI, "WaitTimeout done")
+			DEBUG.Println(CLI, "WaitTimeout done")
 		}
 	} else {
-		trace.WARN.Println(trace.CLI, "Disconnect() called but not connected (disconnected/reconnecting)")
+		WARN.Println(CLI, "Disconnect() called but not connected (disconnected/reconnecting)")
 		c.setConnected(disconnected)
 	}
 
@@ -476,11 +474,11 @@ func (c *client) Disconnect(quiesce uint) {
 // forceDisconnect will end the connection with the mqtt broker immediately (used for tests only)
 func (c *client) forceDisconnect() {
 	if !c.IsConnected() {
-		trace.WARN.Println(trace.CLI, "already disconnected")
+		WARN.Println(CLI, "already disconnected")
 		return
 	}
 	c.setConnected(disconnected)
-	trace.DEBUG.Println(trace.CLI, "forcefully disconnecting")
+	DEBUG.Println(CLI, "forcefully disconnecting")
 	c.disconnect()
 }
 
@@ -489,9 +487,9 @@ func (c *client) disconnect() {
 	done := c.stopCommsWorkers()
 	if done != nil {
 		<-done // Wait until the disconnect is complete (to limit chance that another connection will be started)
-		trace.DEBUG.Println(trace.CLI, "forcefully disconnecting")
+		DEBUG.Println(CLI, "forcefully disconnecting")
 		c.messageIds.cleanUp()
-		trace.DEBUG.Println(trace.CLI, "disconnected")
+		DEBUG.Println(CLI, "disconnected")
 		c.persist.Close()
 	}
 }
@@ -502,13 +500,13 @@ func (c *client) internalConnLost(err error) {
 	// It is possible that internalConnLost will be called multiple times simultaneously
 	// (including after sending a DisconnectPacket) as such we only do cleanup etc if the
 	// routines were actually running and are not being disconnected at users request
-	trace.DEBUG.Println(trace.CLI, "internalConnLost called")
+	DEBUG.Println(CLI, "internalConnLost called")
 	stopDone := c.stopCommsWorkers()
 	if stopDone != nil { // stopDone will be nil if workers already in the process of stopping or stopped
 		go func() {
-			trace.DEBUG.Println(trace.CLI, "internalConnLost waiting on workers")
+			DEBUG.Println(CLI, "internalConnLost waiting on workers")
 			<-stopDone
-			trace.DEBUG.Println(trace.CLI, "internalConnLost workers stopped")
+			DEBUG.Println(CLI, "internalConnLost workers stopped")
 			// It is possible that Disconnect was called which led to this error so reconnection depends upon status
 			reconnect := c.options.AutoReconnect && c.connectionStatus() > connecting
 
@@ -524,7 +522,7 @@ func (c *client) internalConnLost(err error) {
 			if c.options.OnConnectionLost != nil {
 				go c.options.OnConnectionLost(c, err)
 			}
-			trace.DEBUG.Println(trace.CLI, "internalConnLost complete")
+			DEBUG.Println(CLI, "internalConnLost complete")
 		}()
 	}
 }
@@ -533,11 +531,11 @@ func (c *client) internalConnLost(err error) {
 // It starts off all of the routines needed to process incoming and outgoing messages.
 // Returns true if the comms workers were started (i.e. they were not already running)
 func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packets.ControlPacket) bool {
-	trace.DEBUG.Println(trace.CLI, "startCommsWorkers called")
+	DEBUG.Println(CLI, "startCommsWorkers called")
 	c.connMu.Lock()
 	defer c.connMu.Unlock()
 	if c.conn != nil {
-		trace.WARN.Println(trace.CLI, "startCommsWorkers called when commsworkers already running")
+		WARN.Println(CLI, "startCommsWorkers called when commsworkers already running")
 		conn.Close() // No use for the new network connection
 		return false
 	}
@@ -559,7 +557,7 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 	ackOut := c.msgRouter.matchAndDispatch(incomingPubChan, c.options.Order, c)
 
 	c.setConnected(connected)
-	trace.DEBUG.Println(trace.CLI, "client is connected/reconnected")
+	DEBUG.Println(CLI, "client is connected/reconnected")
 	if c.options.OnConnect != nil {
 		go c.options.OnConnect(c)
 	}
@@ -596,7 +594,7 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 				}
 				close(commsoboundP) // Nothing sending to these channels anymore so close them and allow comms routines to exit
 				close(commsobound)
-				trace.DEBUG.Println(trace.CLI, "startCommsWorkers output redirector finished")
+				DEBUG.Println(CLI, "startCommsWorkers output redirector finished")
 				return
 			}
 		}
@@ -628,7 +626,7 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 							commsErrors = nil
 							continue
 						}
-						trace.ERROR.Println(trace.CLI, "Connect comms goroutine - error triggered during send Pub", err)
+						ERROR.Println(CLI, "Connect comms goroutine - error triggered during send Pub", err)
 						c.internalConnLost(err) // no harm in calling this if the connection is already down (or shutdown is in progress)
 						continue
 					}
@@ -638,15 +636,15 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 					commsErrors = nil
 					continue
 				}
-				trace.ERROR.Println(trace.CLI, "Connect comms goroutine - error triggered", err)
+				ERROR.Println(CLI, "Connect comms goroutine - error triggered", err)
 				c.internalConnLost(err) // no harm in calling this if the connection is already down (or shutdown is in progress)
 				continue
 			}
 		}
-		trace.DEBUG.Println(trace.CLI, "incoming comms goroutine done")
+		DEBUG.Println(CLI, "incoming comms goroutine done")
 		close(c.commsStopped)
 	}()
-	trace.DEBUG.Println(trace.CLI, "startCommsWorkers done")
+	DEBUG.Println(CLI, "startCommsWorkers done")
 	return true
 }
 
@@ -654,11 +652,11 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 // Returns nil it workers did not need to be stopped; otherwise returns a channel which will be closed when the stop is complete
 // Note: This may block so run as a go routine if calling from any of the comms routines
 func (c *client) stopCommsWorkers() chan struct{} {
-	trace.DEBUG.Println(trace.CLI, "stopCommsWorkers called")
+	DEBUG.Println(CLI, "stopCommsWorkers called")
 	// It is possible that this function will be called multiple times simultaneously due to the way things get shutdown
 	c.connMu.Lock()
 	if c.conn == nil {
-		trace.DEBUG.Println(trace.CLI, "stopCommsWorkers done (not running)")
+		DEBUG.Println(CLI, "stopCommsWorkers done (not running)")
 		c.connMu.Unlock()
 		return nil
 	}
@@ -678,14 +676,14 @@ func (c *client) stopCommsWorkers() chan struct{} {
 	doneChan := make(chan struct{})
 
 	go func() {
-		trace.DEBUG.Println(trace.CLI, "stopCommsWorkers waiting for workers")
+		DEBUG.Println(CLI, "stopCommsWorkers waiting for workers")
 		c.workers.Wait()
 
 		// Stopping the workers will allow the comms routines to exit; we wait for these to complete
-		trace.DEBUG.Println(trace.CLI, "stopCommsWorkers waiting for comms")
+		DEBUG.Println(CLI, "stopCommsWorkers waiting for comms")
 		<-c.commsStopped // wait for comms routine to stop
 
-		trace.DEBUG.Println(trace.CLI, "stopCommsWorkers done")
+		DEBUG.Println(CLI, "stopCommsWorkers done")
 		close(doneChan)
 	}()
 	return doneChan
@@ -696,7 +694,7 @@ func (c *client) stopCommsWorkers() chan struct{} {
 // Returns a token to track delivery of the message to the broker
 func (c *client) Publish(topic string, qos byte, retained bool, payload interface{}) Token {
 	token := newToken(packets.Publish).(*PublishToken)
-	trace.DEBUG.Println(trace.CLI, "enter Publish")
+	DEBUG.Println(CLI, "enter Publish")
 	switch {
 	case !c.IsConnected():
 		token.setError(ErrNotConnected)
@@ -733,11 +731,11 @@ func (c *client) Publish(topic string, qos byte, retained bool, payload interfac
 	persistOutbound(c.persist, pub)
 	switch c.connectionStatus() {
 	case connecting:
-		trace.DEBUG.Println(trace.CLI, "storing publish message (connecting), topic:", topic)
+		DEBUG.Println(CLI, "storing publish message (connecting), topic:", topic)
 	case reconnecting:
-		trace.DEBUG.Println(trace.CLI, "storing publish message (reconnecting), topic:", topic)
+		DEBUG.Println(CLI, "storing publish message (reconnecting), topic:", topic)
 	default:
-		trace.DEBUG.Println(trace.CLI, "sending publish message, topic:", topic)
+		DEBUG.Println(CLI, "sending publish message, topic:", topic)
 		publishWaitTimeout := c.options.WriteTimeout
 		if publishWaitTimeout == 0 {
 			publishWaitTimeout = time.Second * 30
@@ -760,7 +758,7 @@ func (c *client) Publish(topic string, qos byte, retained bool, payload interfac
 // callback must be safe for concurrent use by multiple goroutines.
 func (c *client) Subscribe(topic string, qos byte, callback MessageHandler) Token {
 	token := newToken(packets.Subscribe).(*SubscribeToken)
-	trace.DEBUG.Println(trace.CLI, "enter Subscribe")
+	DEBUG.Println(CLI, "enter Subscribe")
 	if !c.IsConnected() {
 		token.setError(ErrNotConnected)
 		return token
@@ -808,16 +806,16 @@ func (c *client) Subscribe(topic string, qos byte, callback MessageHandler) Toke
 		sub.MessageID = mID
 		token.messageID = mID
 	}
-	trace.DEBUG.Println(trace.CLI, sub.String())
+	DEBUG.Println(CLI, sub.String())
 
 	persistOutbound(c.persist, sub)
 	switch c.connectionStatus() {
 	case connecting:
-		trace.DEBUG.Println(trace.CLI, "storing subscribe message (connecting), topic:", topic)
+		DEBUG.Println(CLI, "storing subscribe message (connecting), topic:", topic)
 	case reconnecting:
-		trace.DEBUG.Println(trace.CLI, "storing subscribe message (reconnecting), topic:", topic)
+		DEBUG.Println(CLI, "storing subscribe message (reconnecting), topic:", topic)
 	default:
-		trace.DEBUG.Println(trace.CLI, "sending subscribe message, topic:", topic)
+		DEBUG.Println(CLI, "sending subscribe message, topic:", topic)
 		subscribeWaitTimeout := c.options.WriteTimeout
 		if subscribeWaitTimeout == 0 {
 			subscribeWaitTimeout = time.Second * 30
@@ -828,7 +826,7 @@ func (c *client) Subscribe(topic string, qos byte, callback MessageHandler) Toke
 			token.setError(errors.New("subscribe was broken by timeout"))
 		}
 	}
-	trace.DEBUG.Println(trace.CLI, "exit Subscribe")
+	DEBUG.Println(CLI, "exit Subscribe")
 	return token
 }
 
@@ -842,7 +840,7 @@ func (c *client) Subscribe(topic string, qos byte, callback MessageHandler) Toke
 func (c *client) SubscribeMultiple(filters map[string]byte, callback MessageHandler) Token {
 	var err error
 	token := newToken(packets.Subscribe).(*SubscribeToken)
-	trace.DEBUG.Println(trace.CLI, "enter SubscribeMultiple")
+	DEBUG.Println(CLI, "enter SubscribeMultiple")
 	if !c.IsConnected() {
 		token.setError(ErrNotConnected)
 		return token
@@ -885,11 +883,11 @@ func (c *client) SubscribeMultiple(filters map[string]byte, callback MessageHand
 	persistOutbound(c.persist, sub)
 	switch c.connectionStatus() {
 	case connecting:
-		trace.DEBUG.Println(trace.CLI, "storing subscribe message (connecting), topics:", sub.Topics)
+		DEBUG.Println(CLI, "storing subscribe message (connecting), topics:", sub.Topics)
 	case reconnecting:
-		trace.DEBUG.Println(trace.CLI, "storing subscribe message (reconnecting), topics:", sub.Topics)
+		DEBUG.Println(CLI, "storing subscribe message (reconnecting), topics:", sub.Topics)
 	default:
-		trace.DEBUG.Println(trace.CLI, "sending subscribe message, topics:", sub.Topics)
+		DEBUG.Println(CLI, "sending subscribe message, topics:", sub.Topics)
 		subscribeWaitTimeout := c.options.WriteTimeout
 		if subscribeWaitTimeout == 0 {
 			subscribeWaitTimeout = time.Second * 30
@@ -900,7 +898,7 @@ func (c *client) SubscribeMultiple(filters map[string]byte, callback MessageHand
 			token.setError(errors.New("subscribe was broken by timeout"))
 		}
 	}
-	trace.DEBUG.Println(trace.CLI, "exit SubscribeMultiple")
+	DEBUG.Println(CLI, "exit SubscribeMultiple")
 	return token
 }
 
@@ -932,7 +930,7 @@ func (c *client) reserveStoredPublishIDs() {
 // other than that it does not return until all messages in the store have been sent (connect() does not complete its
 // token before this completes)
 func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
-	trace.DEBUG.Println(trace.STR, "enter Resume")
+	DEBUG.Println(STR, "enter Resume")
 
 	// Prior to sending a message getSemaphore will be called and once sent releaseSemaphore will be called
 	// with the token (so semaphore can be released when ACK received if applicable).
@@ -969,7 +967,7 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 	for _, key := range storedKeys {
 		packet := c.persist.Get(key)
 		if packet == nil {
-			trace.DEBUG.Println(trace.STR, fmt.Sprintf("resume found NIL packet (%s)", key))
+			DEBUG.Println(STR, fmt.Sprintf("resume found NIL packet (%s)", key))
 			continue
 		}
 		details := packet.Details()
@@ -977,7 +975,7 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 			switch p := packet.(type) {
 			case *packets.SubscribePacket:
 				if subscription {
-					trace.DEBUG.Println(trace.STR, fmt.Sprintf("loaded pending subscribe (%d)", details.MessageID))
+					DEBUG.Println(STR, fmt.Sprintf("loaded pending subscribe (%d)", details.MessageID))
 					subPacket := packet.(*packets.SubscribePacket)
 					token := newToken(packets.Subscribe).(*SubscribeToken)
 					token.messageID = details.MessageID
@@ -986,7 +984,7 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 					select {
 					case c.oboundP <- &PacketAndToken{p: packet, t: token}:
 					case <-c.stop:
-						trace.DEBUG.Println(trace.STR, "resume exiting due to stop")
+						DEBUG.Println(STR, "resume exiting due to stop")
 						return
 					}
 				} else {
@@ -994,23 +992,23 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 				}
 			case *packets.UnsubscribePacket:
 				if subscription {
-					trace.DEBUG.Println(trace.STR, fmt.Sprintf("loaded pending unsubscribe (%d)", details.MessageID))
+					DEBUG.Println(STR, fmt.Sprintf("loaded pending unsubscribe (%d)", details.MessageID))
 					token := newToken(packets.Unsubscribe).(*UnsubscribeToken)
 					select {
 					case c.oboundP <- &PacketAndToken{p: packet, t: token}:
 					case <-c.stop:
-						trace.DEBUG.Println(trace.STR, "resume exiting due to stop")
+						DEBUG.Println(STR, "resume exiting due to stop")
 						return
 					}
 				} else {
 					c.persist.Del(key) // Unsubscribe packets should not be retained following a reconnect
 				}
 			case *packets.PubrelPacket:
-				trace.DEBUG.Println(trace.STR, fmt.Sprintf("loaded pending pubrel (%d)", details.MessageID))
+				DEBUG.Println(STR, fmt.Sprintf("loaded pending pubrel (%d)", details.MessageID))
 				select {
 				case c.oboundP <- &PacketAndToken{p: packet, t: nil}:
 				case <-c.stop:
-					trace.DEBUG.Println(trace.STR, "resume exiting due to stop")
+					DEBUG.Println(STR, "resume exiting due to stop")
 					return
 				}
 			case *packets.PublishPacket:
@@ -1026,37 +1024,37 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 				token := newToken(packets.Publish).(*PublishToken)
 				token.messageID = details.MessageID
 				c.claimID(token, details.MessageID)
-				trace.DEBUG.Println(trace.STR, fmt.Sprintf("loaded pending publish (%d)", details.MessageID))
-				trace.DEBUG.Println(trace.STR, details)
+				DEBUG.Println(STR, fmt.Sprintf("loaded pending publish (%d)", details.MessageID))
+				DEBUG.Println(STR, details)
 				getSemaphore()
 				select {
 				case c.obound <- &PacketAndToken{p: p, t: token}:
 				case <-c.stop:
-					trace.DEBUG.Println(trace.STR, "resume exiting due to stop")
+					DEBUG.Println(STR, "resume exiting due to stop")
 					return
 				}
 				releaseSemaphore(token) // If limiting simultaneous messages then we need to know when message is acknowledged
 			default:
-				trace.ERROR.Println(trace.STR, "invalid message type in store (discarded)")
+				ERROR.Println(STR, "invalid message type in store (discarded)")
 				c.persist.Del(key)
 			}
 		} else {
 			switch packet.(type) {
 			case *packets.PubrelPacket:
-				trace.DEBUG.Println(trace.STR, fmt.Sprintf("loaded pending incomming (%d)", details.MessageID))
+				DEBUG.Println(STR, fmt.Sprintf("loaded pending incomming (%d)", details.MessageID))
 				select {
 				case ibound <- packet:
 				case <-c.stop:
-					trace.DEBUG.Println(trace.STR, "resume exiting due to stop (ibound <- packet)")
+					DEBUG.Println(STR, "resume exiting due to stop (ibound <- packet)")
 					return
 				}
 			default:
-				trace.ERROR.Println(trace.STR, "invalid message type in store (discarded)")
+				ERROR.Println(STR, "invalid message type in store (discarded)")
 				c.persist.Del(key)
 			}
 		}
 	}
-	trace.DEBUG.Println(trace.STR, "exit resume")
+	DEBUG.Println(STR, "exit resume")
 }
 
 // Unsubscribe will end the subscription from each of the topics provided.
@@ -1064,7 +1062,7 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 // received.
 func (c *client) Unsubscribe(topics ...string) Token {
 	token := newToken(packets.Unsubscribe).(*UnsubscribeToken)
-	trace.DEBUG.Println(trace.CLI, "enter Unsubscribe")
+	DEBUG.Println(CLI, "enter Unsubscribe")
 	if !c.IsConnected() {
 		token.setError(ErrNotConnected)
 		return token
@@ -1099,11 +1097,11 @@ func (c *client) Unsubscribe(topics ...string) Token {
 
 	switch c.connectionStatus() {
 	case connecting:
-		trace.DEBUG.Println(trace.CLI, "storing unsubscribe message (connecting), topics:", topics)
+		DEBUG.Println(CLI, "storing unsubscribe message (connecting), topics:", topics)
 	case reconnecting:
-		trace.DEBUG.Println(trace.CLI, "storing unsubscribe message (reconnecting), topics:", topics)
+		DEBUG.Println(CLI, "storing unsubscribe message (reconnecting), topics:", topics)
 	default:
-		trace.DEBUG.Println(trace.CLI, "sending unsubscribe message, topics:", topics)
+		DEBUG.Println(CLI, "sending unsubscribe message, topics:", topics)
 		subscribeWaitTimeout := c.options.WriteTimeout
 		if subscribeWaitTimeout == 0 {
 			subscribeWaitTimeout = time.Second * 30
@@ -1118,7 +1116,7 @@ func (c *client) Unsubscribe(topics ...string) Token {
 		}
 	}
 
-	trace.DEBUG.Println(trace.CLI, "exit Unsubscribe")
+	DEBUG.Println(CLI, "exit Unsubscribe")
 	return token
 }
 
@@ -1132,7 +1130,7 @@ func (c *client) OptionsReader() ClientOptionsReader {
 // DefaultConnectionLostHandler is a definition of a function that simply
 // reports to the DEBUG log the reason for the client losing a connection.
 func DefaultConnectionLostHandler(client Client, reason error) {
-	trace.DEBUG.Println("Connection lost:", reason.Error())
+	DEBUG.Println("Connection lost:", reason.Error())
 }
 
 // UpdateLastReceived - Will be called whenever a packet is received off the network

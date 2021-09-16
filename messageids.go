@@ -23,8 +23,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
-	"github.com/eclipse/paho.mqtt.golang/trace"
 )
 
 // MId is 16 bit message id as specified by the MQTT spec.
@@ -61,7 +59,7 @@ func (mids *messageIds) cleanUp() {
 	}
 	mids.index = make(map[uint16]tokenCompletor)
 	mids.Unlock()
-	trace.DEBUG.Println(trace.MID, "cleaned up")
+	DEBUG.Println(MID, "cleaned up")
 }
 
 func (mids *messageIds) freeID(id uint16) {
@@ -140,7 +138,7 @@ func (d *DummyToken) Done() <-chan struct{} {
 }
 
 func (d *DummyToken) flowComplete() {
-	trace.ERROR.Printf("A lookup for token %d returned nil\n", d.id)
+	ERROR.Printf("A lookup for token %d returned nil\n", d.id)
 }
 
 func (d *DummyToken) Error() error {

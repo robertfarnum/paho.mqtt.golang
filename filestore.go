@@ -26,7 +26,6 @@ import (
 	"sync"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
-	"github.com/eclipse/paho.mqtt.golang/trace"
 )
 
 const (
@@ -73,7 +72,7 @@ func (store *FileStore) Open() {
 		chkerr(merr)
 	}
 	store.opened = true
-	trace.DEBUG.Println(trace.STR, "store is opened at", store.directory)
+	DEBUG.Println(STR, "store is opened at", store.directory)
 }
 
 // Close will disallow the FileStore from being used.
@@ -81,7 +80,7 @@ func (store *FileStore) Close() {
 	store.Lock()
 	defer store.Unlock()
 	store.opened = false
-	trace.DEBUG.Println(trace.STR, "store is closed")
+	DEBUG.Println(STR, "store is closed")
 }
 
 // Put will put a message into the store, associated with the provided
@@ -90,13 +89,13 @@ func (store *FileStore) Put(key string, m packets.ControlPacket) {
 	store.Lock()
 	defer store.Unlock()
 	if !store.opened {
-		trace.ERROR.Println(trace.STR, "Trying to use file store, but not open")
+		ERROR.Println(STR, "Trying to use file store, but not open")
 		return
 	}
 	full := fullpath(store.directory, key)
 	write(store.directory, key, m)
 	if !exists(full) {
-		trace.ERROR.Println(trace.STR, "file not created:", full)
+		ERROR.Println(STR, "file not created:", full)
 	}
 }
 
@@ -106,7 +105,7 @@ func (store *FileStore) Get(key string) packets.ControlPacket {
 	store.RLock()
 	defer store.RUnlock()
 	if !store.opened {
-		trace.ERROR.Println(trace.STR, "trying to use file store, but not open")
+		ERROR.Println(STR, "trying to use file store, but not open")
 		return nil
 	}
 	filepath := fullpath(store.directory, key)
@@ -121,9 +120,9 @@ func (store *FileStore) Get(key string) packets.ControlPacket {
 	// Message was unreadable, return nil
 	if rerr != nil {
 		newpath := corruptpath(store.directory, key)
-		trace.WARN.Println(trace.STR, "corrupted file detected:", rerr.Error(), "archived at:", newpath)
+		WARN.Println(STR, "corrupted file detected:", rerr.Error(), "archived at:", newpath)
 		if err := os.Rename(filepath, newpath); err != nil {
-			trace.ERROR.Println(trace.STR, err)
+			ERROR.Println(STR, err)
 		}
 		return nil
 	}
@@ -150,7 +149,7 @@ func (store *FileStore) Del(key string) {
 func (store *FileStore) Reset() {
 	store.Lock()
 	defer store.Unlock()
-	trace.WARN.Println(trace.STR, "FileStore Reset")
+	WARN.Println(STR, "FileStore Reset")
 	for _, key := range store.all() {
 		store.del(key)
 	}
@@ -163,7 +162,7 @@ func (store *FileStore) all() []string {
 	var files fileInfos
 
 	if !store.opened {
-		trace.ERROR.Println(trace.STR, "trying to use file store, but not open")
+		ERROR.Println(STR, "trying to use file store, but not open")
 		return nil
 	}
 
@@ -171,10 +170,10 @@ func (store *FileStore) all() []string {
 	chkerr(err)
 	sort.Sort(files)
 	for _, f := range files {
-		trace.DEBUG.Println(trace.STR, "file in All():", f.Name())
+		DEBUG.Println(STR, "file in All():", f.Name())
 		name := f.Name()
 		if len(name) < len(msgExt) || name[len(name)-len(msgExt):] != msgExt {
-			trace.DEBUG.Println(trace.STR, "skipping file, doesn't have right extension: ", name)
+			DEBUG.Println(STR, "skipping file, doesn't have right extension: ", name)
 			continue
 		}
 		key := name[0 : len(name)-4] // remove file extension
@@ -186,22 +185,22 @@ func (store *FileStore) all() []string {
 // lockless
 func (store *FileStore) del(key string) {
 	if !store.opened {
-		trace.ERROR.Println(trace.STR, "trying to use file store, but not open")
+		ERROR.Println(STR, "trying to use file store, but not open")
 		return
 	}
-	trace.DEBUG.Println(trace.STR, "store del filepath:", store.directory)
-	trace.DEBUG.Println(trace.STR, "store delete key:", key)
+	DEBUG.Println(STR, "store del filepath:", store.directory)
+	DEBUG.Println(STR, "store delete key:", key)
 	filepath := fullpath(store.directory, key)
-	trace.DEBUG.Println(trace.STR, "path of deletion:", filepath)
+	DEBUG.Println(STR, "path of deletion:", filepath)
 	if !exists(filepath) {
-		trace.WARN.Println(trace.STR, "store could not delete key:", key)
+		WARN.Println(STR, "store could not delete key:", key)
 		return
 	}
 	rerr := os.Remove(filepath)
 	chkerr(rerr)
-	trace.DEBUG.Println(trace.STR, "del msg:", key)
+	DEBUG.Println(STR, "del msg:", key)
 	if exists(filepath) {
-		trace.ERROR.Println(trace.STR, "file not deleted:", filepath)
+		ERROR.Println(STR, "file not deleted:", filepath)
 	}
 }
 

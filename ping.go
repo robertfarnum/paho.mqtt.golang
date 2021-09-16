@@ -25,14 +25,13 @@ import (
 	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
-	"github.com/eclipse/paho.mqtt.golang/trace"
 )
 
 // keepalive - Send ping when connection unused for set period
 // connection passed in to avoid race condition on shutdown
 func keepalive(c *client, conn io.Writer) {
 	defer c.workers.Done()
-	trace.DEBUG.Println(trace.PNG, "keepalive starting")
+	DEBUG.Println(PNG, "keepalive starting")
 	var checkInterval int64
 	var pingSent time.Time
 
@@ -48,29 +47,29 @@ func keepalive(c *client, conn io.Writer) {
 	for {
 		select {
 		case <-c.stop:
-			trace.DEBUG.Println(trace.PNG, "keepalive stopped")
+			DEBUG.Println(PNG, "keepalive stopped")
 			return
 		case <-intervalTicker.C:
 			lastSent := c.lastSent.Load().(time.Time)
 			lastReceived := c.lastReceived.Load().(time.Time)
 
-			trace.DEBUG.Println(trace.PNG, "ping check", time.Since(lastSent).Seconds())
+			DEBUG.Println(PNG, "ping check", time.Since(lastSent).Seconds())
 			if time.Since(lastSent) >= time.Duration(c.options.KeepAlive*int64(time.Second)) || time.Since(lastReceived) >= time.Duration(c.options.KeepAlive*int64(time.Second)) {
 				if atomic.LoadInt32(&c.pingOutstanding) == 0 {
-					trace.DEBUG.Println(trace.PNG, "keepalive sending ping")
+					DEBUG.Println(PNG, "keepalive sending ping")
 					ping := packets.NewControlPacket(packets.Pingreq).(*packets.PingreqPacket)
 					// We don't want to wait behind large messages being sent, the Write call
 					// will block until it it able to send the packet.
 					atomic.StoreInt32(&c.pingOutstanding, 1)
 					if err := ping.Write(conn); err != nil {
-						trace.ERROR.Println(trace.PNG, err)
+						ERROR.Println(PNG, err)
 					}
 					c.lastSent.Store(time.Now())
 					pingSent = time.Now()
 				}
 			}
 			if atomic.LoadInt32(&c.pingOutstanding) > 0 && time.Since(pingSent) >= c.options.PingTimeout {
-				trace.CRITICAL.Println(trace.PNG, "pingresp not received, disconnecting")
+				CRITICAL.Println(PNG, "pingresp not received, disconnecting")
 				c.internalConnLost(errors.New("pingresp not received, disconnecting")) // no harm in calling this if the connection is already down (or shutdown is in progress)
 				return
 			}

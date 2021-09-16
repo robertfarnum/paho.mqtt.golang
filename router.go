@@ -24,7 +24,6 @@ import (
 	"sync"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
-	"github.com/eclipse/paho.mqtt.golang/trace"
 )
 
 // route is a type which associates MQTT Topic strings with a
@@ -159,10 +158,10 @@ func (r *router) matchAndDispatch(messages <-chan *packets.PublishPacket, order 
 					for {
 						select {
 						case <-ackInChan: // drain ackInChan to ensure all goRoutines can complete cleanly (ACK dropped)
-							trace.DEBUG.Println(trace.ROU, "matchAndDispatch received acknowledgment after processing stopped (ACK dropped).")
+							DEBUG.Println(ROU, "matchAndDispatch received acknowledgment after processing stopped (ACK dropped).")
 						case <-goRoutinesDone:
 							close(ackInChan) // Nothing further should be sent (a panic is probably better than silent failure)
-							trace.DEBUG.Println(trace.ROU, "matchAndDispatch order=false copy goroutine exiting.")
+							DEBUG.Println(ROU, "matchAndDispatch order=false copy goroutine exiting.")
 							return
 						}
 					}
@@ -207,7 +206,7 @@ func (r *router) matchAndDispatch(messages <-chan *packets.PublishPacket, order 
 						}()
 					}
 				} else {
-					trace.DEBUG.Println(trace.ROU, "matchAndDispatch received message and no handler was available. Message will NOT be acknowledged.")
+					DEBUG.Println(ROU, "matchAndDispatch received message and no handler was available. Message will NOT be acknowledged.")
 				}
 			}
 			r.RUnlock()
@@ -228,7 +227,7 @@ func (r *router) matchAndDispatch(messages <-chan *packets.PublishPacket, order 
 				close(goRoutinesDone)
 			}()
 		}
-		trace.DEBUG.Println(trace.ROU, "matchAndDispatch exiting")
+		DEBUG.Println(ROU, "matchAndDispatch exiting")
 	}()
 	return ackOutChan
 }

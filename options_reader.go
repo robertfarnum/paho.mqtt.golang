@@ -23,8 +23,6 @@ import (
 	"net/http"
 	"net/url"
 	"time"
-
-	"github.com/eclipse/paho.mqtt.golang/netconn"
 )
 
 // ClientOptionsReader provides an interface for reading ClientOptions after the client has been initialized.
@@ -167,7 +165,7 @@ func (r *ClientOptionsReader) HTTPHeaders() http.Header {
 }
 
 // WebsocketOptions returns the currently configured WebSocket options
-func (r *ClientOptionsReader) WebsocketOptions() *netconn.WebsocketOptions {
+func (r *ClientOptionsReader) WebsocketOptions() *WebsocketOptions {
 	s := r.options.WebsocketOptions
 	return s
 }
