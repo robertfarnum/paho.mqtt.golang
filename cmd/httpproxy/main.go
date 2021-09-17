@@ -22,10 +22,9 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"golang.org/x/net/proxy"
 	"log"
 	"net/url"
-
-	"golang.org/x/net/proxy"
 
 	// "log"
 	"os"
@@ -52,8 +51,8 @@ func init() {
  * Specify proxy via environment variable: eg: ALL_PROXY=https://proxy_host:port
  */
 func main() {
-	DEBUG = log.New(os.Stdout, "", 0)
-	ERROR = log.New(os.Stderr, "", 0)
+	MQTT.DEBUG = log.New(os.Stdout, "", 0)
+	MQTT.ERROR = log.New(os.Stderr, "", 0)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
